@@ -1,0 +1,11 @@
+- name: UFW master (k3s server + ingress)
+  hosts: master
+  become: true
+  vars_files:
+    - ../group_vars/all/vars.yml
+  tasks:
+    - ufw: { rule: allow, port: "80", proto: tcp, src: "{{ lan_cidr }}" }
+    - ufw: { rule: allow, port: "443", proto: tcp, src: "{{ lan_cidr }}" }
+    - ufw: { rule: allow, port: "6443", proto: tcp, src: "{{ lan_cidr }}" }
+    - ufw: { rule: allow, port: "8472", proto: udp, src: "{{ lan_cidr }}" }
+    - ufw: { rule: allow, port: "10250", proto: tcp, src: "{{ lan_cidr }}" }
