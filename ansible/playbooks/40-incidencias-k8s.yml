@@ -8,7 +8,8 @@
   pre_tasks:
     - name: Convertir replicas a int
       set_fact:
-        inc_replicas_int: {{ inc_replicas | int }}
+        inc_replicas_int: "{{ inc_replicas | int }}"
+
     - name: Instalar dependencias Python para kubernetes.core.k8s (APT)
       apt:
         name:
