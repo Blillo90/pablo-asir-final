@@ -1,0 +1,13 @@
+- name: Asegurar /etc/hosts del laboratorio
+  hosts: all
+  become: true
+  tasks:
+    - blockinfile:
+        path: /etc/hosts
+        marker: "# {mark} ANSIBLE LAB HOSTS"
+        block: |
+          192.168.56.101 app-master
+          192.168.56.102 app-worker1
+          192.168.56.103 app-worker2
+          192.168.56.104 app-db
+          192.168.56.105 app-backup
