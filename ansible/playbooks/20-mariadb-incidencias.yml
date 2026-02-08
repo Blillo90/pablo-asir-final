@@ -1,0 +1,40 @@
+- name: MariaDB (incidencias) en app-db
+  hosts: db
+  become: true
+  vars_files:
+    - ../group_vars/all/vars.yml
+  tasks:
+    - apt:
+        name: [mariadb-server, python3-pymysql]
+        update_cache: true
+        state: present
+
+    - service: { name: mariadb, state: started, enabled: true }
+
+    - lineinfile:
+        path: /etc/mysql/mariadb.conf.d/50-server.cnf
+        regexp: '^bind-address'
+        line: 'bind-address = 0.0.0.0'
+
+    - service: { name: mariadb, state: restarted }
+
+    - community.mysql.mysql_db:
+        name: "{{ inc_db_name }}"
+        state: present
+        login_unix_socket: /var/run/mysqld/mysqld.sock
+
+    - community.mysql.mysql_user:
+        name: "{{ inc_db_user }}"
+        password: "{{ inc_db_pass }}"
+        priv: "{{ inc_db_name }}.*:ALL"
+        host: "%"
+        state: present
+        login_unix_socket: /var/run/mysqld/mysqld.sock
+
+    - community.mysql.mysql_user:
+        name: "{{ backup_db_user }}"
+        password: "{{ backup_db_pass }}"
+        priv: "{{ inc_db_name }}.*:SELECT,SHOW VIEW,TRIGGER,LOCK TABLES"
+        host: "%"
+        state: present
+        login_unix_socket: /var/run/mysqld/mysqld.sock
