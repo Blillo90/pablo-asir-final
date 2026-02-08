@@ -5,11 +5,6 @@
   vars_files:
     - ../group_vars/all/vars.yml
 
-  pre_tasks:
-    - name: Convertir replicas a int
-      set_fact:
-        inc_replicas_int: "{{ inc_replicas | int }}"
-
     - name: Instalar dependencias Python para kubernetes.core.k8s (APT)
       apt:
         name:
@@ -37,7 +32,7 @@
             name: "{{ inc_app_name }}"
             namespace: "{{ inc_namespace }}"
           spec:
-            replicas: "{{ inc_replicas_int | int }}"
+            replicas: 3
             selector:
               matchLabels:
                 app: "{{ inc_app_name }}"
