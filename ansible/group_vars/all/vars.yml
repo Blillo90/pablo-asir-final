@@ -1,0 +1,31 @@
+lan_cidr: "192.168.56.0/24"
+
+master_ip: "192.168.56.101"
+worker_ips:
+  - "192.168.56.102"
+  - "192.168.56.103"
+db_ip: "192.168.56.104"
+backup_ip: "192.168.56.105"
+
+kubeconfig_path: "/etc/rancher/k3s/k3s.yaml"
+
+# App
+inc_namespace: "incidencias"
+inc_app_name: "incidencias-app"
+inc_replicas: "3"
+inc_image: "TU_DOCKERHUB/incidencias:latest"
+inc_host: "incidencias.local"
+
+# MariaDB (app-db)
+inc_db_name: "incidencias"
+inc_db_user: "inc_user"
+inc_db_pass: "root"
+inc_db_host: "192.168.56.104"
+inc_db_port: "3306"
+
+# Backups (app-backup)
+backup_db_user: "backup_user"
+backup_db_pass: "root"
+backup_dir: "/opt/backups/mariadb"
+backup_retention_days: "7"
+backup_time: "02:00"
