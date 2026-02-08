@@ -1,0 +1,27 @@
+- name: Hardening base (UFW + Fail2Ban)
+  hosts: all
+  become: true
+  vars_files:
+    - ../group_vars/all/vars.yml
+  tasks:
+    - apt: { update_cache: true }
+
+    - apt:
+        name: [ufw, fail2ban]
+        state: present
+
+    - ufw: { direction: incoming, policy: deny }
+    - ufw: { direction: outgoing, policy: allow }
+
+    - ufw:
+        rule: allow
+        port: "22"
+        proto: tcp
+        src: "{{ lan_cidr }}"
+
+    - ufw: { state: enabled }
+
+    - service:
+        name: fail2ban
+        state: started
+        enabled: true
