@@ -1,0 +1,112 @@
+- name: Incidencias (Flask) en Kubernetes con replicas + Ingress
+  hosts: master
+  become: true
+  vars_files:
+    - ../group_vars/all/vars.yml
+  pre_tasks:
+    - set_fact:
+        inc_replicas_int: "{{ inc_replicas | int }}"
+  tasks:
+    - kubernetes.core.k8s:
+        kubeconfig: "{{ kubeconfig_path }}"
+        state: present
+        definition:
+          apiVersion: v1
+          kind: Namespace
+          metadata:
+            name: "{{ inc_namespace }}"
+
+    - kubernetes.core.k8s:
+        kubeconfig: "{{ kubeconfig_path }}"
+        state: present
+        definition:
+          apiVersion: v1
+          kind: Secret
+          metadata:
+            name: inc-db-secret
+            namespace: "{{ inc_namespace }}"
+          type: Opaque
+          stringData:
+            DB_HOST: "{{ inc_db_host }}"
+            DB_PORT: "{{ inc_db_port }}"
+            DB_NAME: "{{ inc_db_name }}"
+            DB_USER: "{{ inc_db_user }}"
+            DB_PASSWORD: "{{ inc_db_pass }}"
+
+    - kubernetes.core.k8s:
+        kubeconfig: "{{ kubeconfig_path }}"
+        state: present
+        definition:
+          apiVersion: apps/v1
+          kind: Deployment
+          metadata:
+            name: "{{ inc_app_name }}"
+            namespace: "{{ inc_namespace }}"
+          spec:
+            replicas: "{{ inc_replicas_int }}"
+            selector:
+              matchLabels:
+                app: "{{ inc_app_name }}"
+            template:
+              metadata:
+                labels:
+                  app: "{{ inc_app_name }}"
+              spec:
+                containers:
+                  - name: "{{ inc_app_name }}"
+                    image: "{{ inc_image }}"
+                    ports:
+                      - containerPort: 5000
+                    envFrom:
+                      - secretRef:
+                          name: inc-db-secret
+                    readinessProbe:
+                      httpGet: { path: /health, port: 5000 }
+                      initialDelaySeconds: 5
+                      periodSeconds: 10
+                    livenessProbe:
+                      httpGet: { path: /health, port: 5000 }
+                      initialDelaySeconds: 10
+                      periodSeconds: 15
+
+    - kubernetes.core.k8s:
+        kubeconfig: "{{ kubeconfig_path }}"
+        state: present
+        definition:
+          apiVersion: v1
+          kind: Service
+          metadata:
+            name: "{{ inc_app_name }}"
+            namespace: "{{ inc_namespace }}"
+          spec:
+            selector:
+              app: "{{ inc_app_name }}"
+            ports:
+              - name: http
+                port: 80
+                targetPort: 5000
+
+    - kubernetes.core.k8s:
+        kubeconfig: "{{ kubeconfig_path }}"
+        state: present
+        definition:
+          apiVersion: networking.k8s.io/v1
+          kind: Ingress
+          metadata:
+            name: "{{ inc_app_name }}-ingress"
+            namespace: "{{ inc_namespace }}"
+          spec:
+            rules:
+              - host: "{{ inc_host }}"
+                http:
+                  paths:
+                    - path: /
+                      pathType: Prefix
+                      backend:
+                        service:
+                          name: "{{ inc_app_name }}"
+                          port:
+                            number: 80
+
+    - shell: kubectl -n {{ inc_namespace }} wait --for=condition=available deploy/{{ inc_app_name }} --timeout=180s
+      changed_when: false
