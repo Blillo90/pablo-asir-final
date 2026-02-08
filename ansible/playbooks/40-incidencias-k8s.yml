@@ -6,7 +6,7 @@
     - ../group_vars/all/vars.yml
 
   pre_tasks:
-    - name: Convertir replicas a int
+    - name: Convertir replicas a int real
       set_fact:
         inc_replicas_int: "{{ inc_replicas | int }}"
 
@@ -28,27 +28,29 @@
         msg: "No existe kubeconfig en {{ kubeconfig_path }}. ¿Has instalado k3s server y estás usando la ruta correcta?"
       when: not kubeconfig_stat.stat.exists
 
-    - name: Construir manifiesto Deployment con replicas INT real
+    - name: Construir manifiesto Deployment Incidencias (YAML -> dict) con replicas INT real
       set_fact:
-        inc_deployment_manifest:
+        inc_deployment_manifest: "{{ inc_deployment_manifest_yaml | from_yaml }}"
+      vars:
+        inc_deployment_manifest_yaml: |
           apiVersion: apps/v1
           kind: Deployment
           metadata:
-            name: "{{ inc_app_name }}"
-            namespace: "{{ inc_namespace }}"
+            name: {{ inc_app_name }}
+            namespace: {{ inc_namespace }}
           spec:
-            replicas: "{{ inc_replicas_int | int }}"
+            replicas: {{ inc_replicas_int }}
             selector:
               matchLabels:
-                app: "{{ inc_app_name }}"
+                app: {{ inc_app_name }}
             template:
               metadata:
                 labels:
-                  app: "{{ inc_app_name }}"
+                  app: {{ inc_app_name }}
               spec:
                 containers:
-                  - name: "{{ inc_app_name }}"
-                    image: "{{ inc_image }}"
+                  - name: {{ inc_app_name }}
+                    image: {{ inc_image }}
                     ports:
                       - containerPort: 5000
                     envFrom:
@@ -150,4 +152,11 @@
 
     - name: Esperar a que el deployment esté disponible
       shell: kubectl -n {{ inc_namespace }} wait --for=condition=available deploy/{{ inc_app_name }} --timeout=180s
+      changed_when: false
+
+    - name: Mostrar estado (pods/svc/ingress)
+      shell: |
+        kubectl -n {{ inc_namespace }} get pods -o wide
+        kubectl -n {{ inc_namespace }} get svc
+        kubectl -n {{ inc_namespace }} get ingress
       changed_when: false

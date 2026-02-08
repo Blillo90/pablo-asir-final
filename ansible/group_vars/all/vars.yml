@@ -12,7 +12,7 @@ kubeconfig_path: "/etc/rancher/k3s/k3s.yaml"
 # App
 inc_namespace: "incidencias"
 inc_app_name: "incidencias-app"
-inc_replicas: 3
+inc_replicas: "3"
 inc_image: "blillo90/incidencias:latest"
 inc_host: "incidencias.local"
 
