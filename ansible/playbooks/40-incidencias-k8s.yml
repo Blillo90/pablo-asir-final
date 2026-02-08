@@ -10,7 +10,7 @@
       set_fact:
         inc_replicas_int: "{{ inc_replicas | int }}"
 
-    - name: Instalar dependencias Python para kubernetes.core.k8s (APT, compatible con PEP 668)
+    - name: Instalar dependencias Python para kubernetes.core.k8s (APT)
       apt:
         name:
           - python3-kubernetes
@@ -27,6 +27,45 @@
       fail:
         msg: "No existe kubeconfig en {{ kubeconfig_path }}. ¿Has instalado k3s server y estás usando la ruta correcta?"
       when: not kubeconfig_stat.stat.exists
+
+    - name: Construir manifiesto Deployment con replicas INT real
+      set_fact:
+        inc_deployment_manifest:
+          apiVersion: apps/v1
+          kind: Deployment
+          metadata:
+            name: "{{ inc_app_name }}"
+            namespace: "{{ inc_namespace }}"
+          spec:
+            replicas: "{{ inc_replicas_int | int }}"
+            selector:
+              matchLabels:
+                app: "{{ inc_app_name }}"
+            template:
+              metadata:
+                labels:
+                  app: "{{ inc_app_name }}"
+              spec:
+                containers:
+                  - name: "{{ inc_app_name }}"
+                    image: "{{ inc_image }}"
+                    ports:
+                      - containerPort: 5000
+                    envFrom:
+                      - secretRef:
+                          name: inc-db-secret
+                    readinessProbe:
+                      httpGet:
+                        path: /health
+                        port: 5000
+                      initialDelaySeconds: 5
+                      periodSeconds: 10
+                    livenessProbe:
+                      httpGet:
+                        path: /health
+                        port: 5000
+                      initialDelaySeconds: 10
+                      periodSeconds: 15
 
   tasks:
     - name: Crear namespace
@@ -64,42 +103,7 @@
         kubeconfig: "{{ kubeconfig_path }}"
         state: present
         wait: true
-        definition:
-          apiVersion: apps/v1
-          kind: Deployment
-          metadata:
-            name: "{{ inc_app_name }}"
-            namespace: "{{ inc_namespace }}"
-          spec:
-            replicas: "{{ inc_replicas_int }}"
-            selector:
-              matchLabels:
-                app: "{{ inc_app_name }}"
-            template:
-              metadata:
-                labels:
-                  app: "{{ inc_app_name }}"
-              spec:
-                containers:
-                  - name: "{{ inc_app_name }}"
-                    image: "{{ inc_image }}"
-                    ports:
-                      - containerPort: 5000
-                    envFrom:
-                      - secretRef:
-                          name: inc-db-secret
-                    readinessProbe:
-                      httpGet:
-                        path: /health
-                        port: 5000
-                      initialDelaySeconds: 5
-                      periodSeconds: 10
-                    livenessProbe:
-                      httpGet:
-                        path: /health
-                        port: 5000
-                      initialDelaySeconds: 10
-                      periodSeconds: 15
+        definition: "{{ inc_deployment_manifest }}"
 
     - name: Crear/actualizar Service
       kubernetes.core.k8s:
