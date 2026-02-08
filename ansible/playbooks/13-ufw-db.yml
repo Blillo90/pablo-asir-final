@@ -1,0 +1,16 @@
+- name: UFW DB (MariaDB externo)
+  hosts: db
+  become: true
+  vars_files:
+    - ../group_vars/all/vars.yml
+  tasks:
+    - ufw: { rule: allow, port: "3306", proto: tcp, src: "{{ master_ip }}" }
+
+    - ufw:
+        rule: allow
+        port: "3306"
+        proto: tcp
+        src: "{{ item }}"
+      loop: "{{ worker_ips }}"
+
+    - ufw: { rule: allow, port: "3306", proto: tcp, src: "{{ backup_ip }}" }
