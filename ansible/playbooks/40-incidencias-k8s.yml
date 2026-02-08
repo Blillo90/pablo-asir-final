@@ -28,6 +28,14 @@
         msg: "No existe kubeconfig en {{ kubeconfig_path }}. ¿Has instalado k3s server y estás usando la ruta correcta?"
       when: not kubeconfig_stat.stat.exists
 
+    # Normalizamos imagen para evitar problemas de resolución (k3s/containerd)
+    - name: Normalizar nombre de imagen (forzar docker.io)
+      set_fact:
+        inc_image_norm: >-
+          {{
+            (inc_image.startswith('docker.io/') | ternary(inc_image, 'docker.io/' ~ inc_image))
+          }}
+
     - name: Construir manifiesto Deployment Incidencias (YAML -> dict) con replicas INT real
       set_fact:
         inc_deployment_manifest: "{{ inc_deployment_manifest_yaml | from_yaml }}"
@@ -50,7 +58,8 @@
               spec:
                 containers:
                   - name: {{ inc_app_name }}
-                    image: {{ inc_image }}
+                    image: {{ inc_image_norm }}
+                    imagePullPolicy: Always
                     ports:
                       - containerPort: 5000
                     envFrom:
@@ -150,8 +159,12 @@
                           port:
                             number: 80
 
+    - name: Reiniciar rollout para forzar pull de la imagen (si ya existía el deployment)
+      shell: kubectl -n {{ inc_namespace }} rollout restart deploy/{{ inc_app_name }}
+      changed_when: false
+
     - name: Esperar a que el deployment esté disponible
-      shell: kubectl -n {{ inc_namespace }} wait --for=condition=available deploy/{{ inc_app_name }} --timeout=180s
+      shell: kubectl -n {{ inc_namespace }} rollout status deploy/{{ inc_app_name }} --timeout=300s
       changed_when: false
 
     - name: Mostrar estado (pods/svc/ingress)
