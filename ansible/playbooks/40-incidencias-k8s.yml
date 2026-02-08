@@ -1,24 +1,58 @@
 - name: Incidencias (Flask) en Kubernetes con replicas + Ingress
   hosts: master
   become: true
+
   vars_files:
     - ../group_vars/all/vars.yml
+
   pre_tasks:
-    - set_fact:
+    - name: Convertir replicas a int
+      set_fact:
         inc_replicas_int: "{{ inc_replicas | int }}"
+
+    - name: Instalar pip y dependencias base (para kubernetes.core.k8s)
+      apt:
+        name:
+          - python3-pip
+          - python3-setuptools
+          - python3-wheel
+        update_cache: true
+        state: present
+
+    - name: Instalar librerías Python necesarias (kubernetes, pyyaml) a nivel sistema
+      pip:
+        name:
+          - kubernetes
+          - pyyaml
+        executable: pip3
+
+    - name: Verificar que existe el kubeconfig de k3s
+      stat:
+        path: "{{ kubeconfig_path }}"
+      register: kubeconfig_stat
+
+    - name: Fallar si no existe kubeconfig
+      fail:
+        msg: "No existe kubeconfig en {{ kubeconfig_path }}. ¿Has instalado k3s server y estás usando la ruta correcta?"
+      when: not kubeconfig_stat.stat.exists
+
   tasks:
-    - kubernetes.core.k8s:
+    - name: Crear namespace
+      kubernetes.core.k8s:
         kubeconfig: "{{ kubeconfig_path }}"
         state: present
+        wait: true
         definition:
           apiVersion: v1
           kind: Namespace
           metadata:
             name: "{{ inc_namespace }}"
 
-    - kubernetes.core.k8s:
+    - name: Crear/actualizar Secret DB
+      kubernetes.core.k8s:
         kubeconfig: "{{ kubeconfig_path }}"
         state: present
+        wait: true
         definition:
           apiVersion: v1
           kind: Secret
@@ -33,9 +67,11 @@
             DB_USER: "{{ inc_db_user }}"
             DB_PASSWORD: "{{ inc_db_pass }}"
 
-    - kubernetes.core.k8s:
+    - name: Aplicar Deployment
+      kubernetes.core.k8s:
         kubeconfig: "{{ kubeconfig_path }}"
         state: present
+        wait: true
         definition:
           apiVersion: apps/v1
           kind: Deployment
@@ -61,17 +97,23 @@
                       - secretRef:
                           name: inc-db-secret
                     readinessProbe:
-                      httpGet: { path: /health, port: 5000 }
+                      httpGet:
+                        path: /health
+                        port: 5000
                       initialDelaySeconds: 5
                       periodSeconds: 10
                     livenessProbe:
-                      httpGet: { path: /health, port: 5000 }
+                      httpGet:
+                        path: /health
+                        port: 5000
                       initialDelaySeconds: 10
                       periodSeconds: 15
 
-    - kubernetes.core.k8s:
+    - name: Crear/actualizar Service
+      kubernetes.core.k8s:
         kubeconfig: "{{ kubeconfig_path }}"
         state: present
+        wait: true
         definition:
           apiVersion: v1
           kind: Service
@@ -86,9 +128,11 @@
                 port: 80
                 targetPort: 5000
 
-    - kubernetes.core.k8s:
+    - name: Crear/actualizar Ingress
+      kubernetes.core.k8s:
         kubeconfig: "{{ kubeconfig_path }}"
         state: present
+        wait: true
         definition:
           apiVersion: networking.k8s.io/v1
           kind: Ingress
@@ -108,5 +152,13 @@
                           port:
                             number: 80
 
-    - shell: kubectl -n {{ inc_namespace }} wait --for=condition=available deploy/{{ inc_app_name }} --timeout=180s
+    - name: Esperar a que el deployment esté disponible
+      shell: kubectl -n {{ inc_namespace }} wait --for=condition=available deploy/{{ inc_app_name }} --timeout=180s
+      changed_when: false
+
+    - name: Mostrar pods y ingress (debug)
+      shell: |
+        kubectl -n {{ inc_namespace }} get pods -o wide
+        kubectl -n {{ inc_namespace }} get svc
+        kubectl -n {{ inc_namespace }} get ingress
       changed_when: false
