@@ -1,0 +1,92 @@
+- name: Configurar backups MariaDB comprimidos + cron en app-backup
+  hosts: backup
+  become: true
+
+  vars_files:
+    - ../group_vars/all/vars.yml
+
+  vars:
+    backup_script_path: /usr/local/bin/backup_mariadb.sh
+    backup_log_path: /var/log/mariadb_backup.log
+
+  tasks:
+    - name: Instalar herramientas necesarias (cliente MariaDB + gzip)
+      apt:
+        name:
+          - mariadb-client
+          - gzip
+        state: present
+        update_cache: true
+
+    - name: Crear directorio de backups
+      file:
+        path: "{{ backup_dir }}"
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+
+    # Evita poner -pPASS en el comando (sale en ps/top). mysqldump leerá credenciales de aquí.
+    - name: Crear /root/.my.cnf con credenciales de backup (0600)
+      copy:
+        dest: /root/.my.cnf
+        owner: root
+        group: root
+        mode: "0600"
+        content: |
+          [client]
+          user={{ backup_db_user }}
+          password={{ backup_db_pass }}
+          host={{ db_ip }}
+
+    - name: Crear script de backup (dump + gzip + retención)
+      copy:
+        dest: "{{ backup_script_path }}"
+        owner: root
+        group: root
+        mode: "0755"
+        content: |
+          #!/usr/bin/env bash
+          set -euo pipefail
+
+          DB_NAME="{{ inc_db_name }}"
+          BACKUP_DIR="{{ backup_dir }}"
+          RETENTION_DAYS="{{ backup_retention_days }}"
+          LOG="{{ backup_log_path }}"
+
+          ts="$(date +'%Y-%m-%d_%H-%M-%S')"
+          out="${BACKUP_DIR}/${DB_NAME}_${ts}.sql.gz"
+          tmp="${BACKUP_DIR}/.${DB_NAME}_${ts}.sql.gz.tmp"
+
+          mkdir -p "${BACKUP_DIR}"
+
+          echo "[$(date +'%F %T')] START backup ${DB_NAME}" >> "${LOG}"
+
+          # mysqldump usa /root/.my.cnf (host/user/password)
+          mysqldump --single-transaction --routines --triggers "${DB_NAME}" \
+            | gzip -c > "${tmp}"
+
+          mv "${tmp}" "${out}"
+
+          # Retención
+          find "${BACKUP_DIR}" -type f -name "*.sql.gz" -mtime +"${RETENTION_DAYS}" -print -delete >> "${LOG}" 2>&1 || true
+
+          echo "[$(date +'%F %T')] OK -> ${out}" >> "${LOG}"
+
+    - name: Programar cron diario a la hora configurada (backup_time HH:MM)
+      cron:
+        name: "Backup MariaDB comprimido ({{ inc_db_name }})"
+        user: root
+        minute: "{{ (backup_time.split(':')[1]) | int }}"
+        hour: "{{ (backup_time.split(':')[0]) | int }}"
+        job: "{{ backup_script_path }} >> {{ backup_log_path }} 2>&1"
+
+    - name: Probar que el script existe y es ejecutable
+      stat:
+        path: "{{ backup_script_path }}"
+      register: backup_script_stat
+
+    - name: Fallar si el script no está bien creado
+      fail:
+        msg: "No se ha creado correctamente {{ backup_script_path }}"
+      when: not backup_script_stat.stat.exists or not backup_script_stat.stat.executable
